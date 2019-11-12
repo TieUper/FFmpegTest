@@ -2,6 +2,7 @@
 // Created by Administrator on 2019/11/6.
 //
 
+
 #include "VideoChannel.h"
 
 
@@ -9,8 +10,8 @@ VideoChannel::~VideoChannel() {
 
 }
 
-VideoChannel::VideoChannel(int id,AVCodecContext *avCodecContext) : BaseChannel(id,avCodecContext) {
-
+VideoChannel::VideoChannel(int id, AVCodecContext *avCodecContext, int fps) : BaseChannel(id, avCodecContext) {
+    this->fps = fps;
 }
 
 void *task_video_decode(void *args){
@@ -75,6 +76,10 @@ void VideoChannel::video_decode() {
         }
         //数据收发正常，成功获取到了解码后的视频原始数据包 AVFrame 格式yuv
         //对frame进行处理（渲染播放）
+        while (isPlaying && frames.size() > 100) {
+            av_usleep(10 * 1000);
+            continue;
+        }
         frames.push(avFrame);
     }//end while
     releaseAVPacket(&packet);
@@ -90,13 +95,14 @@ void VideoChannel::video_play() {
     uint8_t *dst_data[4];
     int dst_linesize[4];
 
-    LOGE("开始播放");
-
     SwsContext *swsContext = sws_getContext(avCodecContext->width,avCodecContext->height,avCodecContext->pix_fmt,
             avCodecContext->width,avCodecContext->height,AV_PIX_FMT_RGBA,
             SWS_BILINEAR,NULL,NULL,NULL);
     av_image_alloc(dst_data,dst_linesize,avCodecContext->width,avCodecContext->height,AV_PIX_FMT_RGBA,1);
-
+    //根据fps(传入的流的平均帧率来控制每一帧的延时时间)
+    //sleep: fps > 时间
+    //单位是秒
+    double delay_time_per_frame = 1.0 / fps;
     while (isPlaying) {
         int ret = frames.pop(avFrame);
         if (!isPlaying) {
@@ -110,6 +116,12 @@ void VideoChannel::video_play() {
         //取到了yuv原始数据，下面进行格式转换
         sws_scale(swsContext, avFrame->data, avFrame->linesize, 0, avCodecContext->height, dst_data,
                   dst_linesize);
+        //进行休眠
+        //每一帧还有自己的额外延时时间
+        double extra_delay = avFrame->repeat_pict / (2*fps);
+        double real_delay = extra_delay + delay_time_per_frame;
+        //单位是微秒
+        av_usleep(real_delay * 1000000);
         //dst_data:AV_PIX_FMT_RGBA格式里的数据
         //渲染，回调出去-> native-lib里
         //渲染一副图像需要什么信息：（宽高->图像的尺寸）（图像的内容（数据）怎么画）

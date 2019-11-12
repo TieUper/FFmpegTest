@@ -8,6 +8,7 @@
 extern "C"{
 #include <libavcodec/avcodec.h>
 #include <libavutil/frame.h>
+#include <libavutil/time.h>
 };
 
 #include "safe_queue.h"

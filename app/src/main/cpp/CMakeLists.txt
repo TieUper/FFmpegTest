@@ -18,4 +18,5 @@ target_link_libraries( # Specifies the target library.
         -Wl,--end-group
         log
         z
-        android)
+        android
+        OpenSLES)

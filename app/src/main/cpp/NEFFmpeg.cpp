@@ -113,7 +113,10 @@ void NEFFmpeg::_prepare() {
             audioChannel = new AudioChannel(i, codecContext);
         } else if (codecParameters->codec_type == AVMEDIA_TYPE_VIDEO) {
             //视频 VideoChannel
-            videoChannel = new VideoChannel(i, codecContext);
+            AVRational frame_rate = stream->avg_frame_rate;
+//            int fps = frame_rate.num / frame_rate.den;
+            int fps = av_q2d(frame_rate);
+            videoChannel = new VideoChannel(i, codecContext, fps);
             videoChannel->setRenderCallback(renderCallback);
         }
     }
@@ -132,6 +135,7 @@ void NEFFmpeg::_prepare() {
 void NEFFmpeg::start() {
     isPlaying = 1;
     videoChannel->start();
+    audioChannel->start();
     pthread_create(&pid_start, 0, task_start,this);
 }
 
@@ -140,6 +144,10 @@ void NEFFmpeg::start() {
  */
 void NEFFmpeg::_start() {
     while (isPlaying) {
+        if (videoChannel->packets.size() > 100) {
+            av_usleep(10 * 1000);
+            continue;
+        }
         AVPacket *packet = av_packet_alloc();
 
         int ret = av_read_frame(formatContext, packet);
@@ -148,7 +156,7 @@ void NEFFmpeg::_start() {
                 //往视频编码数据包队列中添加数据
                 videoChannel->packets.push(packet);
             } else if (audioChannel && packet->stream_index == audioChannel->id) {
-
+                audioChannel->packets.push(packet);
             }
         } else if (ret == AVERROR_EOF) {
             //表示读完了 考虑读完了，是否播完了
@@ -162,7 +170,7 @@ void NEFFmpeg::_start() {
     isPlaying = 0;
     //停止解码播放
     videoChannel->stop();
-    videoChannel->stop();
+    audioChannel->stop();
 }
 
 void NEFFmpeg::setRenderCallback(RenderCallback renderCallback) {
