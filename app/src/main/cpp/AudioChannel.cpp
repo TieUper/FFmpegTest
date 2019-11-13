@@ -5,7 +5,11 @@
 #include "AudioChannel.h"
 
 AudioChannel::~AudioChannel() {
-
+    if(swrContext){
+        swr_free(&swrContext);
+        swrContext = 0;
+    }
+    DELETE(out_buffers);
 }
 
 AudioChannel::AudioChannel(int i, AVCodecContext *pContext) : BaseChannel(i, pContext) {
@@ -17,6 +21,14 @@ AudioChannel::AudioChannel(int i, AVCodecContext *pContext) : BaseChannel(i, pCo
     out_buffers_size = out_channels * out_sample_size * out_sample_rate;
     out_buffers = static_cast<uint8_t *>(malloc(out_buffers_size));
     memset(out_buffers, 0, out_buffers_size);
+
+    swrContext = swr_alloc_set_opts(0, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16,
+                                                out_sample_rate, avCodecContext->channel_layout,
+                                                avCodecContext->sample_fmt,
+                                                avCodecContext->sample_rate,
+                                                0, 0);
+    //    初始化重采样上下文
+    swr_init(swrContext);
 }
 
 void *task_audio_decode(void *args) {
@@ -219,13 +231,14 @@ void AudioChannel::audio_play() {
 int AudioChannel::getPCM() {
     int pcm_data_size = 0;
     AVFrame *frame = 0;
-    SwrContext *swrContext = swr_alloc_set_opts(0, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16,
-                                                out_sample_rate, avCodecContext->channel_layout,
-                                                avCodecContext->sample_fmt,
-                                                avCodecContext->sample_rate,
-                                                0, 0);
-    //    初始化重采样上下文
-    swr_init(swrContext);
+    //每次创建，没有释放，造成内存泄漏
+//    SwrContext *swrContext = swr_alloc_set_opts(0, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16,
+//                                                out_sample_rate, avCodecContext->channel_layout,
+//                                                avCodecContext->sample_fmt,
+//                                                avCodecContext->sample_rate,
+//                                                0, 0);
+//    //    初始化重采样上下文
+//    swr_init(swrContext);
 
     while (isPlaying) {
         int ret = frames.pop(frame);
@@ -255,7 +268,7 @@ int AudioChannel::getPCM() {
 
         // 获取swr_convert转换后 out_samples个 *2 （16位）*2（双声道）
         pcm_data_size = out_samples * out_sample_size * out_channels;
-
+//        frame->best_effort_timestamp
         break;
     }//end while
     releaseAVFrame(&frame);

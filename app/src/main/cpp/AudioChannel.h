@@ -53,6 +53,8 @@ private:
     SLPlayItf bqPlayerInterface = 0;
     //播放器队列
     SLAndroidSimpleBufferQueueItf bqPlayerBufferQueue = 0;
+
+    SwrContext *swrContext;
 };
 
 
